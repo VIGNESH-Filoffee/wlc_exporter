@@ -38,7 +38,7 @@ wifi | Wi-Fi metrics (clients, aps, wlans) | N/A | N/A | - | - |
 
 # Install
 ```bash
-go get -u github.com/yankiwi/aruba_exporter
+go get -u github.com/VIGNESH-Filoffee/wlc_exporter/aruba_exporter
 ```
 
 # Usage
