@@ -1,0 +1,113 @@
+package main
+
+import (
+	"sync"
+	"time"
+
+	"github.com/yankiwi/wlc_exporter/config"
+	"github.com/yankiwi/wlc_exporter/rpc"
+
+	// "github.com/yankiwi/wlc_exporter/config" // Import the config package
+	"github.com/prometheus/client_golang/prometheus"
+	log "github.com/sirupsen/logrus"
+	"github.com/yankiwi/wlc_exporter/connector"
+)
+
+const prefix = "aruba_"
+
+var (
+	scrapeCollectorDurationDesc *prometheus.Desc
+	scrapeDurationDesc          *prometheus.Desc
+	upDesc                      *prometheus.Desc
+)
+
+var cfg *config.Config
+
+func init() {
+	upDesc = prometheus.NewDesc(prefix+"up", "Scrape of target was successful", []string{"target", "serial"}, nil)
+	scrapeDurationDesc = prometheus.NewDesc(prefix+"collector_duration_seconds", "Duration of a collector scrape for one target", []string{"target", "serial"}, nil)
+	scrapeCollectorDurationDesc = prometheus.NewDesc(prefix+"collect_duration_seconds", "Duration of a scrape by collector and target", []string{"target", "serial", "collector"}, nil)
+}
+
+type arubaCollector struct {
+	devices    []*connector.Device
+	collectors *collectors
+}
+
+func newArubaCollector(devices []*connector.Device) *arubaCollector {
+	return &arubaCollector{
+		devices:    devices,
+		collectors: collectorsForDevices(devices, cfg),
+	}
+}
+
+// Describe implements prometheus.Collector interface
+func (c *arubaCollector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- upDesc
+	ch <- scrapeDurationDesc
+	ch <- scrapeCollectorDurationDesc
+
+	for _, col := range c.collectors.allEnabledCollectors() {
+		col.Describe(ch)
+	}
+}
+
+// Collect implements prometheus.Collector interface
+func (c *arubaCollector) Collect(ch chan<- prometheus.Metric) {
+	wg := &sync.WaitGroup{}
+
+	wg.Add(len(c.devices))
+	for _, d := range c.devices {
+		go c.collectForHost(d, ch, wg)
+	}
+
+	wg.Wait()
+}
+
+func (c *arubaCollector) collectForHost(device *connector.Device, ch chan<- prometheus.Metric, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	// Modified From []string{device.Host) to []string{device.Host, device.Serial} by SG
+
+	customSerial := device.Serial
+	if customSerial == "" {
+		customSerial = "NO_SERIAL_NO"
+	}
+
+	l := []string{device.Host, customSerial}
+
+	t := time.Now()
+	defer func() {
+		ch <- prometheus.MustNewConstMetric(scrapeDurationDesc, prometheus.GaugeValue, time.Since(t).Seconds(), l...)
+	}()
+
+	conn, err := connector.NewSSSHConnection(device, cfg)
+	if err != nil {
+		log.Errorln(err)
+		ch <- prometheus.MustNewConstMetric(upDesc, prometheus.GaugeValue, 0, l...)
+		return
+	}
+	defer conn.Close()
+
+	ch <- prometheus.MustNewConstMetric(upDesc, prometheus.GaugeValue, 1, l...)
+
+	client := rpc.NewClient(conn, cfg.Level)
+	err = client.Identify()
+	if err != nil {
+		log.Errorln(device.Host + ": " + err.Error())
+		return
+	}
+
+	log.Debugf("collectors: %+v", c.collectors.collectorsForDevice(device))
+	for _, col := range c.collectors.collectorsForDevice(device) {
+		ct := time.Now()
+		log.Debugf("collector: %v", col)
+		err := col.Collect(client, ch, l)
+
+		if err != nil && err.Error() != "EOF" {
+			log.Errorln(col.Name() + ": " + err.Error())
+		}
+
+		ch <- prometheus.MustNewConstMetric(scrapeCollectorDurationDesc, prometheus.GaugeValue, time.Since(ct).Seconds(), append(l, col.Name())...)
+	}
+}

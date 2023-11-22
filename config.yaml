@@ -1,0 +1,37 @@
+level: debug
+timeout: 60
+batch_size: 10000
+devices:
+  # - host: 10.25.250.77
+  #   username: Z18FILONMS
+  #   password: Fil0ff33@2022
+  #   serial: GSHECJSHS
+    
+  # - host: 10.10.2.251
+  #   username: guest
+  #   password: Airowire@123
+  #   serial: GSHECJSHS2
+
+  - host: 10.25.14.12
+    username: Z18FILONMS
+    password: Fil0ff33@2022
+    serial: GSHECJSHS3
+
+  # - host: 10.25.232.5
+  #   username: Z18FILONMS
+  #   password: Fil0ff33@2022
+
+  # - host: 10.25.32.28
+  #   username: Z18FILONMS
+  #   password: Fil0ff33@2022
+features:
+  system: true
+  environment: true
+  interfaces: true
+  optics: true
+  routes: true
+  wifi: true
+  clients: true
+  inp: true
+  appessid: true
+  

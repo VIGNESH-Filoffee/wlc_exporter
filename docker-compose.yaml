@@ -1,0 +1,14 @@
+version: "3.8"
+
+services:
+  wlc_exporter:
+    build: ./wlc_exporter  # Assuming you have a separate directory for WLC exporter
+    volumes:
+      - ./wlc_exporter:/usr/src/app/  # Adjust the path accordingly
+    ports:
+      - "9910:9910"  # Change the port if needed
+    entrypoint:
+      - /go/bin/CompileDaemon
+      - -directory=./
+      - -build=go build -o ./build/wlc_exporter       
+      - -command=./build/wlc_exporter -config.file ./wlc_config.yaml  # Adjust the config file name
